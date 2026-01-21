@@ -9,9 +9,20 @@ class KynGame {
         this.gameMode = null; // "intervals" | "degrees" | "notes"
         this.useFlatMode = true;
 
+        this.customConfig = {
+            timerValues: [1000, 2000, 3000, 5000, 10000, Infinity],
+            timerIndex: 2,          // 3s par défaut
+            directionIndex: 0,      // 0: UP, 1: DOWN, 2: UP & DOWN
+            selectedItems: new Set(),
+            presetName: null
+        };
+
+
         // Difficulté
         this.timeLimitSeconds = 3;
         this.sessionQuestions = 10;
+        this.difficulty = null; // "noob" | "slow" | "normal" | "expert" | "custom"
+
 
         // Question en cours
         this.startingNote = null;
@@ -40,14 +51,13 @@ class KynGame {
         this.answerWasCorrect = false;
 
         // Interval lists
-        this.intervalList = [-12, -11, -10, -9, -8, -7, -5, -4, -3, -2, -1, 0,
-                              1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12];
+        this.noobIntervals   = INTERVAL_SETS.noob;
+        this.slowIntervals   = INTERVAL_SETS.slow;
+        this.normalIntervals = INTERVAL_SETS.normal;
+        this.expertIntervals = INTERVAL_SETS.expert;
 
-        this.noobIntervals   = [3, 4, 7, 11, 12];
-        this.slowIntervals   = [3, 4, 6, 7, 10, 11, 12, -3, -4, -6, -7, -10, -11, -12];
-        this.normalIntervals = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
-                                -2, -3, -4, -5, -6, -7, -8, -9, -10, -11, -12];
-        this.expertIntervals = this.intervalList;
+        this.customPresets = CUSTOM_INTERVAL_PRESETS;
+
     }
 
     // ---------------------------------------------------------
@@ -64,6 +74,7 @@ class KynGame {
             this.startingNoteVisible = true;
             this.startingNoteDisplayTime = now;
             this.guitar.startingNoteVisible = true;
+           // this.playStartingNote();
         }
 
         // Countdown
@@ -102,9 +113,16 @@ class KynGame {
         if (this.state === "difficulty") {
             return this._handleDifficultyClick(mx, my);
         }
+        if (this.state === "customConfig") {
+            return this._handleCustomConfigClick(mx, my);
+        }
+
         if (this.state === "end") {
             return this._handleEndClick(mx, my);
         }
+        if (this._handleDirectionCyclerClick(mx, my)) return true;
+        if (this._handleCustomGridClick(mx, my)) return true;
+
         // En mode "playing" ou "answer", le clic sur le manche est géré ailleurs
         return false;
     }
@@ -116,6 +134,7 @@ class KynGame {
                 if (this.questionsAnswered >= this.sessionQuestions) {
                     this.state = "end";
                 } else {
+                    this.state = "playing";
                     this._startNewQuestion();
                 }
             }
@@ -188,25 +207,210 @@ class KynGame {
         const buttonY = height / 2 + 50;
         const buttonWidth = 100;
         const buttonHeight = 50;
-        const buttonsX = [width / 2 - 160, width / 2 - 50, width / 2 + 60, width / 2 + 170];
+        const buttonsX = [
+                        width / 2 - 210,
+                        width / 2 - 105,
+                        width / 2,
+                        width / 2 + 105,
+                        width / 2 + 210   
+            ];
+
         const difficulties = [
             { label: 'NOOB',   time: 10 },
             { label: 'SLOW',   time: 5 },
             { label: 'NORMAL', time: 4 },
-            { label: 'EXPERT', time: 2 }
+            { label: 'EXPERT', time: 2 },
+            { label: 'CUSTOM', time: null }
+
         ];
+
+        if (this._inRect(mx, my, width * 0.15, height - 80, 200, 60)) {
+            this.state = "home";
+            return true;
+        }
+
 
         for (let i = 0; i < difficulties.length; i++) {
             if (this._inRect(mx, my, buttonsX[i], buttonY, buttonWidth, buttonHeight)) {
+
+                this.difficulty = difficulties[i].label.toLowerCase();
+
+                if (difficulties[i].label === "CUSTOM") {
+                    this.state = "customConfig";   // 🔥 NOUVEAU ÉCRAN
+                    return true;
+                }
+
                 this.timeLimitSeconds = difficulties[i].time;
                 this._resetSessionState();
                 this._startNewQuestion();
                 this.state = "playing";
                 return true;
             }
+
         }
+
         return false;
     }
+
+    _handleCustomConfigClick(mx, my) {
+
+        // --- 1. Bouton Retour ---
+        if (this._inRect(mx, my, width * 0.15, height - 80, 200, 60)) {
+            this.state = "difficulty";
+            return true;
+        }
+
+        // --- 2. Bouton START ---
+        if (this._inRect(mx, my, width/2, height - 80, 300, 80)) {
+            this.difficulty = "custom";
+            this.timeLimitSeconds = this.customConfig.timerValues[this.customConfig.timerIndex];
+            this._resetSessionState();
+            this._startNewQuestion();
+            this.state = "playing";
+            return true;
+        }
+
+if (this._handleDirectionCyclerClick(mx, my)) return true;
+
+        // --- 3. Clic sur la grille ---
+        if (this._handleCustomGridClick(mx, my)) {
+            return true;
+        }
+
+        // --- 4. Clic sur les boutons de direction ---
+        if (this._handleDirectionClick(mx, my)) {
+            return true;
+        }
+
+        // --- 5. Clic sur les presets (si tu veux les activer plus tard) ---
+        // if (this._handlePresetClick(mx, my)) return true;
+
+        return false;
+    }
+
+
+_handleDirectionClick(mx, my) {
+    const areaX = width * 0.75;
+    const cx = areaX + (width * 0.25) / 2;
+    const startY = 150;
+    const btnW = 200;
+    const btnH = 60;
+    const spacing = 20;
+
+    for (let i = 0; i < 3; i++) {
+        const y = startY + i * (btnH + spacing);
+
+        // centre du bouton
+        const cy = y + btnH / 2;
+
+        if (this._inRect(mx, my, cx, cy, btnW, btnH)) {
+            this.customConfig.directionIndex = i;
+            return true;
+        }
+    }
+
+    return false;
+}
+
+
+
+_handleCustomGridClick(mx, my) {
+    const cols = 4;
+    const rows = 3;
+
+    const areaWidth = width * 0.75;
+    const offsetX = width * 0.25;
+
+    const cellW = (areaWidth * 0.8) / cols;
+    const cellH = cellW * 0.6;
+
+    const totalWidth = cols * cellW;
+    const startX = offsetX + (areaWidth - totalWidth) / 2;
+    const startY = 150;
+
+    let i = 0;
+
+    for (let r = rows - 1; r >= 0; r--) {
+        for (let c = 0; c < cols; c++) {
+
+            // case DIR gérée ailleurs
+            if (r === 0 && c === 0) continue;
+
+            const x = startX + c * cellW;
+            const y = startY + r * cellH;
+
+            const cx = x + cellW / 2;
+            const cy = y + cellH / 2;
+
+            if (this._inRect(mx, my, cx, cy, cellW, cellH)) {
+                if (this.customConfig.selectedItems.has(i)) {
+                    this.customConfig.selectedItems.delete(i);
+                } else {
+                    this.customConfig.selectedItems.add(i);
+                }
+                return true;
+            }
+
+            i++;
+            if (i >= 11) return false;
+        }
+    }
+
+    return false;
+}
+
+
+_handleDirectionCyclerClick(mx, my) {
+    const cols = 4;
+    const areaWidth = width * 0.75;
+    const offsetX = width * 0.25;
+
+    const cellW = (areaWidth * 0.8) / cols;
+    const cellH = cellW * 0.6;
+
+    const totalWidth = cols * cellW;
+    const startX = offsetX + (areaWidth - totalWidth) / 2;
+    const startY = 150;
+
+    const x = startX;
+    const y = startY;
+
+    const cx = x + cellW / 2;
+    const cy = y + cellH / 2;
+
+    if (this._inRect(mx, my, cx, cy, cellW, cellH)) {
+        this.customConfig.directionIndex =
+            (this.customConfig.directionIndex + 1) % 3;
+        return true;
+    }
+
+    return false;
+}
+
+
+_handleDirectionCyclerClick(mx, my) {
+    const cellW = 160;
+    const cellH = 100;
+
+    const cols = 4;
+    const totalWidth = cols * cellW;
+    const startX = width * 0.25 + (width * 0.75 - totalWidth) / 2;
+    const startY = 150;
+
+    const x = startX;
+    const y = startY;
+
+    const cx = x + cellW / 2;
+    const cy = y + cellH / 2;
+
+    if (this._inRect(mx, my, cx, cy, cellW, cellH)) {
+        this.customConfig.directionIndex =
+            (this.customConfig.directionIndex + 1) % 3;
+        return true;
+    }
+
+    return false;
+}
 
     _handleEndClick(mx, my) {
         const restartButtonY = height / 2 + 120;
@@ -241,6 +445,11 @@ class KynGame {
         this.guitar.playedNotes = [];
         this.guitar.setPlayedNote([]);
 
+        // 🔥 Correctif indispensable
+        this.startingNoteDisplayTime = 0;
+        this.questionDisplayTime = millis();
+
+
         while (!validQuestion && attempts < 20) {
             const randomString = floor(random(6));
             const randomFret = floor(random(1, this.guitar.fretCount));
@@ -248,28 +457,50 @@ class KynGame {
             this.startingNote = this.guitar.getNoteFromCoordinates(randomString, randomFret);
             this.startingNotePosition = { string: randomString, fret: randomFret };
 
-            if (this.gameMode === "intervals") {
-                const allowedIntervals = this._getIntervalsForCurrentDifficulty();
-                this.currentInterval = random(allowedIntervals);
-                this.targetNote = this._calculateTargetNote(this.startingNote, this.currentInterval);
-            } else if (this.gameMode === "degrees") {
-                const allowedIntervals = this._getIntervalsForCurrentDifficultyDegrees();
-                const randomInterval = random(allowedIntervals);
-                this.currentDegree = randomInterval;
-                this.targetNote = this._calculateTargetNoteByDegree(this.startingNote, randomInterval);
-            } else if (this.gameMode === "notes") {
-                const allowedIntervals = this._getIntervalsForCurrentDifficultyNotes();
-                const randomInterval = random(allowedIntervals);
-                this.targetNote = this._calculateTargetNote(this.startingNote, randomInterval);
-                this.currentTargetNoteName = this.targetNote.match(/[A-G]#?b?/)[0];
-            }
+// 🔥 CHOIX DE L’INTERVALLE / DIRECTION — À METTRE ICI
+let direction = this.customConfig.directionIndex; // 0 = UP, 1 = DOWN, 2 = BOTH
+
+if (this.difficulty === "custom") {
+    if (this.gameMode === "intervals") {
+        const allowed = this._getIntervalsForCurrentDifficulty();
+        let interval = random(allowed);
+
+        if (direction === 1) interval *= -1; // DOWN
+        if (direction === 2 && random() < 0.5) interval *= -1; // BOTH
+
+        this.currentInterval = interval;
+        this.targetNote = this._calculateTargetNote(this.startingNote, interval);
+    }
+
+    else if (this.gameMode === "degrees") {
+        const allowed = this._getIntervalsForCurrentDifficultyDegrees();
+        let interval = random(allowed);
+
+        if (direction === 1) interval *= -1;
+        if (direction === 2 && random() < 0.5) interval *= -1;
+
+        this.currentDegree = interval;
+        this.targetNote = this._calculateTargetNoteByDegree(this.startingNote, interval);
+    }
+
+    else if (this.gameMode === "notes") {
+        const allowed = this._getIntervalsForCurrentDifficultyNotes();
+        let interval = random(allowed);
+
+        if (direction === 1) interval *= -1;
+        if (direction === 2 && random() < 0.5) interval *= -1;
+
+        this.targetNote = this._calculateTargetNote(this.startingNote, interval);
+        this.currentTargetNoteName = this.targetNote.match(/[A-G]#?b?/)[0];
+    }
+}
+
 
             this.correctNotePosition = this._findNoteOnFretboard(this.targetNote);
             if (this.correctNotePosition) validQuestion = true;
             attempts++;
         }
 
-        this.questionDisplayTime = millis();
 
         this.guitar.startingNotePosition = this.startingNotePosition;
         this.guitar.startingNoteVisible = false;
@@ -320,27 +551,58 @@ class KynGame {
     // ---------------------------------------------------------
     // INTERVALS / DIFFICULTY HELPERS
     // ---------------------------------------------------------
+
+    _getIntervalsForDifficulty(mode) {
+        switch (this.difficulty) {
+            case "noob":   return INTERVAL_SETS.noob;
+            case "slow":   return INTERVAL_SETS.slow;
+            case "normal": return INTERVAL_SETS.normal;
+            case "expert": return INTERVAL_SETS.expert;
+            case "custom": return this._getCustomIntervals(mode);
+        }
+    }
+
+
+   
     _getIntervalsForCurrentDifficulty() {
-        if (this.timeLimitSeconds === 10) return this.noobIntervals;
-        if (this.timeLimitSeconds === 5)  return this.slowIntervals;
-        if (this.timeLimitSeconds === 4)  return this.normalIntervals;
-        return this.expertIntervals;
+        return this._getIntervalsForDifficulty("intervals");
     }
 
     _getIntervalsForCurrentDifficultyDegrees() {
-        if (this.timeLimitSeconds === 10) return [3, 4, 7, 12];
-        if (this.timeLimitSeconds === 5)  return [3, 4, 6, 7, 10, 11, 12, -3, -4, -6, -7, -10, -11, -12];
-        if (this.timeLimitSeconds === 4)  return [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
-        return this.intervalList;
+        return this._getIntervalsForDifficulty("degrees");
     }
 
     _getIntervalsForCurrentDifficultyNotes() {
-        if (this.timeLimitSeconds === 10) return [3, 4, 7, 12];
-        if (this.timeLimitSeconds === 5)  return [3, 4, 6, 7, 10, 11, 12, -3, -4, -6, -7, -10, -11, -12];
-        if (this.timeLimitSeconds === 4)  return [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
-                                                 -1, -2, -3, -4, -5, -6, -7, -8, -9, -10, -11, -12];
-        return this.intervalList;
+        return this._getIntervalsForDifficulty("notes");
     }
+
+    _getCustomIntervals(mode) {
+        const selected = [...this.customConfig.selectedItems];
+
+        if (selected.length === 0) {
+            return []; // rien sélectionné
+        }
+
+        if (mode === "intervals") {
+            const labels = ['P1','m2','M2','m3','M3','P4','TT','P5','m6','M6','m7','M7'];
+            return selected.map(i => INTERVALS[labels[i]]);
+        }
+
+        if (mode === "degrees") {
+            // degrés → demi‑tons relatifs
+            const degreeSemitones = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
+            return selected.map(i => degreeSemitones[i]);
+        }
+
+        if (mode === "notes") {
+            // notes → demi‑tons absolus (C = 0)
+            const noteSemitones = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
+            return selected.map(i => noteSemitones[i]);
+        }
+
+        return [];
+    }
+
 
     // ---------------------------------------------------------
     // MUSIQUE
@@ -436,6 +698,8 @@ class KynGame {
             this._renderHomeScreen();
         } else if (this.state === "difficulty") {
             this._renderDifficultyScreen();
+        } else if (this.state === "customConfig") {
+            this._renderCustomConfigScreen();   
         } else if (this.state === "playing" || this.state === "answer") {
             this._renderGameScreen();
         } else if (this.state === "end") {
@@ -443,6 +707,48 @@ class KynGame {
         }
         pop()
     }
+
+
+
+    _renderCustomConfigScreen() {
+
+        // Label dynamique
+        let label = "";
+        if (this.gameMode === "intervals") label = "Choix des intervalles";
+        else if (this.gameMode === "degrees") label = "Choix des degrés";
+        else if (this.gameMode === "notes") label = "Choix des notes";
+
+        const leftWidth = width * 0.25;
+        const rightWidth = width * 0.75;
+
+        // ---------------------------
+        // 1. Zone PRESETS (gauche)
+        // ---------------------------
+        this._renderCustomPresetsPanel(0, 0, leftWidth, height);
+
+        // ---------------------------
+        // 2. Zone principale (droite)
+        // ---------------------------
+        fill(255);
+        textAlign(CENTER, CENTER);
+        textSize(32);
+        text(label, leftWidth + rightWidth / 2, 60);
+
+        // Grille centrée dans la zone droite
+        this._renderCustomGrid(150, leftWidth, rightWidth);
+
+
+
+        // Gros bouton START
+        this._drawButton(leftWidth + rightWidth / 2, height - 80, 300, 80, "START");
+        
+        this._drawButton(width * 0.15, height - 80, 200, 60, "BACK");
+
+    }
+
+
+
+
 
     _renderHomeScreen() {
         fill(0);
@@ -491,21 +797,35 @@ class KynGame {
         let buttonY = height / 2 + 50;
         let buttonWidth = 100;
         let buttonHeight = 50;
-        let buttonsX = [width / 2 - 160, width / 2 - 50, width / 2 + 60, width / 2 + 170];
+
+        const buttonsX = [
+            width / 2 - 210,
+            width / 2 - 105,
+            width / 2,
+            width / 2 + 105,
+            width / 2 + 210
+        ];
+
         let difficulties = [
             { label: 'NOOB', time: '10s' },
             { label: 'SLOW', time: '5s' },
             { label: 'NORMAL', time: '4s' },
-            { label: 'EXPERT', time: '2s' }
+            { label: 'EXPERT', time: '2s' },
+            { label: 'CUSTOM', time: null }
         ];
 
         for (let i = 0; i < difficulties.length; i++) {
             this._drawButton(buttonsX[i], buttonY, buttonWidth, buttonHeight, difficulties[i].label);
+
             fill(255);
             textSize(12);
-            text(difficulties[i].time, buttonsX[i], buttonY + 20);
+
+            if (difficulties[i].time !== null) {
+                text(difficulties[i].time, buttonsX[i], buttonY + 20);
+            }
         }
     }
+
 
     _renderGameScreen() {
         let uiY = this.guitar.neckY + this.guitar.neckHeight + 80;
@@ -630,6 +950,100 @@ class KynGame {
         }
     }
 
+
+_renderCustomGrid(topY, offsetX = 0, areaWidth = width) {
+    const cols = 4;
+    const rows = 3;
+
+    const cellW = (areaWidth * 0.8) / cols;
+    const cellH = cellW * 0.6;
+
+    const startX = offsetX + (areaWidth - cols * cellW) / 2;
+    const startY = topY;
+
+    let labels;
+    if (this.gameMode === "intervals") {
+        labels = ['P1','m2','M2','m3','M3','P4','TT','P5','m6','M6','m7','M7'];
+    } else if (this.gameMode === "degrees") {
+        labels = ['1','b2','2','b3','3','4','#4/b5','5','b6','6','b7','7'];
+    } else if (this.gameMode === "notes") {
+        labels = ['C','C#/Db','D','D#/Eb','E','F','F#/Gb','G','G#/Ab','A','A#/Bb','B'];
+    } else {
+        labels = Array(12).fill("?");
+    }
+
+    // on n’utilise que 11 labels (1..11), la 12e est ignorée
+    let i = 0;
+
+    for (let r = rows - 1; r >= 0; r--) {
+        for (let c = 0; c < cols; c++) {
+
+            // bas-gauche = DIR
+            if (r === 0 && c === 0) {
+                this._renderDirectionCycler(startX, startY, cellW, cellH);
+                continue;
+            }
+
+            const x = startX + c * cellW;
+            const y = startY + r * cellH;
+
+            const selected = this.customConfig.selectedItems.has(i);
+
+            fill(selected ? '#66cc66' : '#333333');
+            rect(x, y, cellW, cellH, 12);
+
+            fill(255);
+            textAlign(CENTER, CENTER);
+            textSize(cellH * 0.4);
+            text(labels[i], x + cellW / 2, y + cellH / 2);
+
+            i++;
+            if (i >= 11) return; // on s’arrête à 11
+        }
+    }
+}
+
+_renderDirectionCycler(startX, startY, cellW, cellH) {
+    const x = startX;
+    const y = startY; // bas-gauche
+
+    const cx = x + cellW / 2;
+    const cy = y + cellH / 2;
+
+    const states = ["UP", "UP&DOWN", "DOWN"];
+    const label = states[this.customConfig.directionIndex];
+
+    fill("#444");
+    rect(x, y, cellW, cellH, 12);
+
+    fill(255);
+    textAlign(CENTER, CENTER);
+    textSize(cellH * 0.35);
+    text(label, cx, cy);
+}
+
+
+    _renderCustomPresetsPanel(x, y, w, h) {
+        const btnW = w * 0.8;
+        const btnH = 60;
+        const startX = x + w * 0.5;
+        let currentY = 120;
+
+        const presets = [
+            "Triades",
+            "Modes",
+            "Pentatonique",
+            "Blues",
+            "Chromatique"
+        ];
+
+        for (let p of presets) {
+            this._drawButton(startX, currentY, btnW, btnH, p);
+            currentY += btnH + 20;
+        }
+    }
+
+
     _renderEndScreen() {
         fill(0);
         textSize(48);
@@ -664,14 +1078,22 @@ class KynGame {
     }
 
     _drawButton(cx, cy, w, h, label) {
+        push();
         rectMode(CENTER);
+        textAlign(CENTER, CENTER);
+
+        // Fond
         fill(0, 100, 200);
         rect(cx, cy, w, h, 8);
+
+        // Texte
         fill(255);
-        textAlign(CENTER, CENTER);
         textSize(18);
         text(label, cx, cy);
+
+        pop();
     }
+
 
     // ---------------------------------------------------------
     // INTERVAL / DEGREE NAMES (simplifiés)
@@ -715,4 +1137,16 @@ class KynGame {
         };
         return map[abs] || '?';
     }
+
+    // audio
+
+    playStartingNote() {
+        if (!guitarSF) return; // instrument pas encore chargé
+
+        guitarSF.play(this.startingNote, audioCtx.currentTime, {
+            gain: 1.0,
+            duration: 1.5
+        });
+    }
+
 }

@@ -1,5 +1,16 @@
 let guitar;
 let game;
+let audioCtx;
+let guitarSF;
+
+function preload() {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+    Soundfont.instrument(audioCtx, 'electric_guitar_clean').then(inst => {
+        guitarSF = inst;
+    });
+}
+
 
 function setup() {
     createCanvas(windowWidth, windowHeight);
