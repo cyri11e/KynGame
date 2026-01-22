@@ -2,21 +2,19 @@ let guitar;
 let game;
 let audioCtx;
 let guitarSF;
-
-function preload() {
-    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-
-    Soundfont.instrument(audioCtx, 'electric_guitar_clean').then(inst => {
-        guitarSF = inst;
-    });
-}
+let activeSounds = {};
 
 
 function setup() {
     createCanvas(windowWidth, windowHeight);
+
+
+    guitarSF = MIDI.Soundfont.electric_guitar_clean;
     guitar = new Guitar(13);
     game = new KynGame(guitar);
+
 }
+
 
 function windowResized() {
     resizeCanvas(windowWidth, windowHeight);
@@ -41,6 +39,8 @@ function mouseDragged() {
 }
 
 function mouseClicked() {
+
+    //new Howl({ src: [guitarSF["C4"]] }).play();
     if (!guitar || !game) return false;
 
     // D’abord, laisser le jeu décider si le clic concerne un menu / bouton
@@ -52,6 +52,8 @@ function mouseClicked() {
     guitar.mouseClicked();
     if (guitar.clickedNote) {
         game.handleNoteClick(guitar.clickedNote);
+        console.log("Note cliquée :", guitar.clickedNote.note);
+        playNote(guitar.clickedNote.note);
     }
     return false;
 }
@@ -63,4 +65,50 @@ function keyPressed() {
 
 function keyReleased() {
     if (guitar && guitar.keyReleased) guitar.keyReleased();
+}
+
+function convertSharpToFlat(note) {
+    // Exemple : "C#4" → "Db4"
+    const map = {
+        "C#": "Db",
+        "D#": "Eb",
+        "F#": "Gb",
+        "G#": "Ab",
+        "A#": "Bb"
+    };
+
+    // Extraire la partie note + altération (ex: "C#" ou "Db")
+    const pitch = note.slice(0, -1);   // "C#" ou "Db"
+    const octave = note.slice(-1);     // "4"
+
+    // Si c’est un dièse, convertir
+    if (map[pitch]) {
+        return map[pitch] + octave;
+    }
+
+    // Sinon, renvoyer tel quel
+    return note;
+}
+
+function playNote(noteName, duration = 1000) {
+    console.log("playNote:", noteName);
+    const flat = convertSharpToFlat(noteName);
+    const url = guitarSF[flat];
+    if (!url) return;
+
+    // Stopper toutes les notes en cours
+    for (let n in activeSounds) {
+        activeSounds[n].stop();
+        delete activeSounds[n];
+    }
+
+    const snd = new Howl({ src: [url], volume: 1.0 });
+    const id = snd.play();
+
+    activeSounds[flat] = snd;
+
+    setTimeout(() => {
+        snd.stop(id);
+        delete activeSounds[flat];
+    }, duration);
 }

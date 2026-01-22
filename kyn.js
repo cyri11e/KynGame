@@ -36,7 +36,7 @@ class KynGame {
         // Timers
         this.questionDisplayTime = 0;
         this.startingNoteDisplayTime = 0;
-        this.displayTimeDelay = 1000; // délai avant affichage de la note de départ
+        this.displayTimeDelay = 0; // délai avant affichage de la note de départ
         this.startingNoteVisible = false;
         this.timeoutOccurred = false;
 
@@ -63,69 +63,96 @@ class KynGame {
     // ---------------------------------------------------------
     // BOUCLE PRINCIPALE
     // ---------------------------------------------------------
-    update() {
-        if (this.state !== "playing") return;
+update() {
 
-        // Affichage différé de la note de départ
+    // ---------------------------------------------------------
+    // 1) TIMER AUTO-CONTINUE (fonctionne même hors "playing")
+    // ---------------------------------------------------------
+    if (this.state === "answer") {
         const now = millis();
-        const timeSinceQuestionDisplay = now - this.questionDisplayTime;
 
-        if (!this.startingNoteVisible && timeSinceQuestionDisplay >= this.displayTimeDelay) {
-            this.startingNoteVisible = true;
-            this.startingNoteDisplayTime = now;
-            this.guitar.startingNoteVisible = true;
-           // this.playStartingNote();
+        // initialisation du timer
+        if (!this.answerTimerStart) {
+            this.answerTimerStart = now;
         }
 
-        // Countdown
-        if (this.startingNoteVisible && !this.showingAnswer) {
-            const elapsedSinceStart = now - this.startingNoteDisplayTime;
-            const timeRemaining = this.timeLimitSeconds * 1000 - elapsedSinceStart;
+        // après 2 secondes → question suivante ou fin
+        if (now - this.answerTimerStart >= 2000) {
+            this.answerTimerStart = null;
 
-            if (timeRemaining <= 0 && !this.timeoutOccurred) {
-                this.timeoutOccurred = true;
-                this.showingAnswer = true;
-                this.answerWasCorrect = false;
-                this.questionsAnswered++;
-
-                if (this.correctNotePosition) {
-                    this.guitar.setPlayedNote([this.targetNote]);
-                }
-
-                // Passage à l’état "answer"
-                this.state = "answer";
+            if (this.questionsAnswered >= this.sessionQuestions) {
+                this.state = "end";
+            } else {
+                this.state = "playing";
+                this._startNewQuestion();
             }
         }
 
-        // Fin de session
-        if (this.questionsAnswered >= this.sessionQuestions && this.state === "answer") {
-            this.state = "end";
+        return; // IMPORTANT : on ne fait rien d’autre en mode answer
+    }
+
+    // ---------------------------------------------------------
+    // 2) SI PAS EN MODE PLAYING → STOP
+    // ---------------------------------------------------------
+    if (this.state !== "playing") return;
+
+    // ---------------------------------------------------------
+    // 3) LOGIQUE DU MODE PLAYING
+    // ---------------------------------------------------------
+
+    const now = millis();
+    const timeSinceQuestionDisplay = now - this.questionDisplayTime;
+
+    // Affichage différé de la note de départ
+    if (!this.startingNoteVisible && timeSinceQuestionDisplay >= this.displayTimeDelay) {
+        this.startingNoteVisible = true;
+        this.startingNoteDisplayTime = now;
+        this.guitar.startingNoteVisible = true;
+        //this.playStartingNote();
+    }
+
+    // Countdown / Timeout
+    if (this.startingNoteVisible && !this.showingAnswer) {
+        const elapsedSinceStart = now - this.startingNoteDisplayTime;
+        const timeRemaining = this.timeLimitSeconds * 1000 - elapsedSinceStart;
+
+        if (timeRemaining <= 0 && !this.timeoutOccurred) {
+            this.timeoutOccurred = true;
+            this.showingAnswer = true;
+            this.answerWasCorrect = false;
+            this.questionsAnswered++;
+
+            if (this.correctNotePosition) {
+                this.guitar.setPlayedNote([this.targetNote]);
+            }
+
+            // passage en mode answer → timer auto
+            this.state = "answer";
+            this.answerTimerStart = null;
         }
     }
+}
+
+
 
     // ---------------------------------------------------------
     // GESTION DES CLICS (menus + jeu)
     // ---------------------------------------------------------
-    mouseClicked(mx, my) {
-        if (this.state === "home") {
-            return this._handleHomeClick(mx, my);
-        }
-        if (this.state === "difficulty") {
-            return this._handleDifficultyClick(mx, my);
-        }
-        if (this.state === "customConfig") {
-            return this._handleCustomConfigClick(mx, my);
-        }
+mouseClicked(mx, my) {
 
-        if (this.state === "end") {
-            return this._handleEndClick(mx, my);
-        }
+    if (this.state === "home") return this._handleHomeClick(mx, my);
+    if (this.state === "difficulty") return this._handleDifficultyClick(mx, my);
+    if (this.state === "customConfig") {
         if (this._handleDirectionCyclerClick(mx, my)) return true;
         if (this._handleCustomGridClick(mx, my)) return true;
-
-        // En mode "playing" ou "answer", le clic sur le manche est géré ailleurs
-        return false;
+        return this._handleCustomConfigClick(mx, my);
     }
+    if (this.state === "end") return this._handleEndClick(mx, my);
+
+    // En mode playing/answer → NE TOUCHE PAS AUX HANDLERS CUSTOM
+    return false;
+}
+
 
     keyPressed(k, keyCode) {
         // Espace pour passer à la question suivante ou terminer la session
@@ -142,10 +169,22 @@ class KynGame {
     }
 
     // Clic sur une note du manche (jeu)
-    handleNoteClick(clickedNote) {
-        if (this.state !== "playing") return;
-        if (!this.startingNoteVisible || this.showingAnswer) return;
+handleNoteClick(clickedNote) {
 
+    if (this.state !== "playing") {
+        console.log('CLICK IGNORED: state !== "playing"');
+        return;
+    }
+    if (!this.startingNoteVisible) {
+        console.log('CLICK IGNORED: startingNoteVisible === false');
+        return;
+    }
+    if (this.showingAnswer) {
+        console.log('CLICK IGNORED: showingAnswer === true');
+        return;
+    }
+
+    // à partir d’ici, le clic est accepté
         this.userSelectedNote = clickedNote;
 
         if (clickedNote.note === this.targetNote) {
@@ -433,96 +472,109 @@ _handleDirectionCyclerClick(mx, my) {
     // ---------------------------------------------------------
     // QUESTIONS
     // ---------------------------------------------------------
-    _startNewQuestion() {
-        let validQuestion = false;
-        let attempts = 0;
+   _startNewQuestion() {
+    let validQuestion = false;
+    let attempts = 0;
 
-        this.showingAnswer = false;
-        this.answerWasCorrect = false;
-        this.timeoutOccurred = false;
-        this.startingNoteVisible = false;
-        this.guitar.startingNoteVisible = false;
-        this.guitar.playedNotes = [];
-        this.guitar.setPlayedNote([]);
+    this.showingAnswer = false;
+    this.answerWasCorrect = false;
+    this.timeoutOccurred = false;
+    this.startingNoteVisible = false;
+    this.guitar.startingNoteVisible = false;
+    this.guitar.playedNotes = [];
+    this.guitar.setPlayedNote([]);
 
-        // 🔥 Correctif indispensable
-        this.startingNoteDisplayTime = 0;
-        this.questionDisplayTime = millis();
+    this.startingNoteDisplayTime = 0;
+    this.questionDisplayTime = millis();
 
+    while (!validQuestion && attempts < 20) {
 
-        while (!validQuestion && attempts < 20) {
-            const randomString = floor(random(6));
-            const randomFret = floor(random(1, this.guitar.fretCount));
+        // --- 1. NOTE DE DÉPART ---
+        const randomString = floor(random(6));
+        const randomFret = floor(random(1, this.guitar.fretCount));
 
-            this.startingNote = this.guitar.getNoteFromCoordinates(randomString, randomFret);
-            this.startingNotePosition = { string: randomString, fret: randomFret };
+        this.startingNote = this.guitar.getNoteFromCoordinates(randomString, randomFret);
+        this.startingNotePosition = { string: randomString, fret: randomFret };
 
-// 🔥 CHOIX DE L’INTERVALLE / DIRECTION — À METTRE ICI
-let direction = this.customConfig.directionIndex; // 0 = UP, 1 = DOWN, 2 = BOTH
+        // Jouer la note de départ
+        playNote(this.startingNote, 2000    );
 
-if (this.difficulty === "custom") {
-    if (this.gameMode === "intervals") {
-        const allowed = this._getIntervalsForCurrentDifficulty();
-        let interval = random(allowed);
+        // --- 2. CHOIX INTERVALLE / DEGRÉ / NOTE ---
+        let interval;
 
-        if (direction === 1) interval *= -1; // DOWN
-        if (direction === 2 && random() < 0.5) interval *= -1; // BOTH
+        if (this.gameMode === "intervals") {
+            const allowed = this._getIntervalsForCurrentDifficulty();
+            interval = random(allowed);
 
-        this.currentInterval = interval;
-        this.targetNote = this._calculateTargetNote(this.startingNote, interval);
+            // direction appliquée UNIQUEMENT en mode custom
+            if (this.difficulty === "custom") {
+                const dir = this.customConfig.directionIndex; // 0=UP,1=DOWN,2=BOTH
+                if (dir === 1) interval *= -1;
+                if (dir === 2 && random() < 0.5) interval *= -1;
+            }
+
+            this.currentInterval = interval;
+            this.targetNote = this._calculateTargetNote(this.startingNote, interval);
+        
+        }
+
+        else if (this.gameMode === "degrees") {
+            const allowed = this._getIntervalsForCurrentDifficultyDegrees();
+            interval = random(allowed);
+
+            if (this.difficulty === "custom") {
+                const dir = this.customConfig.directionIndex;
+                if (dir === 1) interval *= -1;
+                if (dir === 2 && random() < 0.5) interval *= -1;
+            }
+
+            this.currentDegree = interval;
+            this.targetNote = this._calculateTargetNoteByDegree(this.startingNote, interval);
+        }
+
+        else if (this.gameMode === "notes") {
+            const allowed = this._getIntervalsForCurrentDifficultyNotes();
+            interval = random(allowed);
+
+            if (this.difficulty === "custom") {
+                const dir = this.customConfig.directionIndex;
+                if (dir === 1) interval *= -1;
+                if (dir === 2 && random() < 0.5) interval *= -1;
+            }
+
+            this.targetNote = this._calculateTargetNote(this.startingNote, interval);
+            this.currentTargetNoteName = this.targetNote.match(/[A-G]#?b?/)[0];
+        }
+
+        // --- 3. VALIDATION : la note existe sur le manche ---
+        this.correctNotePosition = this._findNoteOnFretboard(this.targetNote);
+        if (this.correctNotePosition) validQuestion = true;
+
+        attempts++;
     }
 
-    else if (this.gameMode === "degrees") {
-        const allowed = this._getIntervalsForCurrentDifficultyDegrees();
-        let interval = random(allowed);
+    // --- 4. MISE À JOUR GUITARE ---
+    this.guitar.startingNotePosition = this.startingNotePosition;
+    this.guitar.startingNoteVisible = false;
+    this.guitar.startingNote = this.startingNote;
 
-        if (direction === 1) interval *= -1;
-        if (direction === 2 && random() < 0.5) interval *= -1;
-
-        this.currentDegree = interval;
-        this.targetNote = this._calculateTargetNoteByDegree(this.startingNote, interval);
+    if (this.gameMode === "notes") {
+        this.guitar.degreMode = false;
+        this.guitar.tonic = null;
+    } else {
+        this.guitar.degreMode = true;
+        this.guitar.tonic = {
+            note: this.startingNote,
+            string: this.startingNotePosition.string,
+            fret: this.startingNotePosition.fret
+        };
     }
 
-    else if (this.gameMode === "notes") {
-        const allowed = this._getIntervalsForCurrentDifficultyNotes();
-        let interval = random(allowed);
-
-        if (direction === 1) interval *= -1;
-        if (direction === 2 && random() < 0.5) interval *= -1;
-
-        this.targetNote = this._calculateTargetNote(this.startingNote, interval);
-        this.currentTargetNoteName = this.targetNote.match(/[A-G]#?b?/)[0];
-    }
+    this.guitar.selectionMode = 'single';
+    this.guitar.intervals = [];
+    this.guitar.clickedNotes = [];
+    this.guitar.playedNotes = [];
 }
-
-
-            this.correctNotePosition = this._findNoteOnFretboard(this.targetNote);
-            if (this.correctNotePosition) validQuestion = true;
-            attempts++;
-        }
-
-
-        this.guitar.startingNotePosition = this.startingNotePosition;
-        this.guitar.startingNoteVisible = false;
-        this.guitar.startingNote = this.startingNote;
-
-        if (this.gameMode === "notes") {
-            this.guitar.degreMode = false;
-            this.guitar.tonic = null;
-        } else {
-            this.guitar.degreMode = true;
-            this.guitar.tonic = {
-                note: this.startingNote,
-                string: this.startingNotePosition.string,
-                fret: this.startingNotePosition.fret
-            };
-        }
-
-        this.guitar.selectionMode = 'single';
-        this.guitar.intervals = [];
-        this.guitar.clickedNotes = [];
-        this.guitar.playedNotes = [];
-    }
 
     _resetSessionState() {
         this.score = 0;
@@ -640,6 +692,13 @@ if (this.difficulty === "custom") {
                 targetNote = targetNoteName + targetOctave;
             }
         }
+
+
+        // Jouer la note réponse juste après
+        setTimeout(() => {
+            console.log("Playing target note:", targetNote);
+            playNote(targetNote, 600);
+        }, 650);
 
         return targetNote;
     }
@@ -1138,15 +1197,5 @@ _renderDirectionCycler(startX, startY, cellW, cellH) {
         return map[abs] || '?';
     }
 
-    // audio
-
-    playStartingNote() {
-        if (!guitarSF) return; // instrument pas encore chargé
-
-        guitarSF.play(this.startingNote, audioCtx.currentTime, {
-            gain: 1.0,
-            duration: 1.5
-        });
-    }
 
 }
