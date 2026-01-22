@@ -968,13 +968,13 @@ const spacing = height * 0.02; // 2% de la hauteur
 }
 
     _renderGameScreen() {
-        let uiY = this.guitar.neckY + this.guitar.neckHeight + 80;
+        let uiY = this.guitar.neckY + this.guitar.neckHeight ;
 
         // Score
         fill(0);
         textAlign(CENTER, TOP);
-        textSize(24);
-        text('Score: ' + this.score, width / 3, 40);
+        textSize(height/8);
+        text('Score: ' + this.score, width / 2, 0);
 
         // Countdown
         if (this.startingNoteVisible && !this.showingAnswer) {
@@ -990,7 +990,7 @@ const spacing = height * 0.02; // 2% de la hauteur
                 fill(200, 0, 0);
             }
             textSize(40);
-            text(secondsRemaining.toFixed(1) + 's', 100, uiY + 40);
+            text(secondsRemaining.toFixed(1) + 's', 100, 20);
         }
 
         // Consigne selon le mode
@@ -1032,16 +1032,16 @@ const spacing = height * 0.02; // 2% de la hauteur
                 nameText = intervalInfo.fr;
             }
 
-            textSize(70);
+            textSize(height/4);
             textStyle(BOLD);
-            text(directionText + ' ' + codeText, width / 2, uiY);
+            text(directionText + ' ' + codeText, width / 2, uiY * 1.05);
 
             if (nameText) {
-                textSize(28);
+                textSize(height/9);
                 textStyle(NORMAL);
                 text((directionText == "UP" ? 'Monte ' : 'Descends ') +
                      (nameText == 'triton' ? "d'un " : "d'une ") +
-                     nameText, width / 2, uiY + 80);
+                     nameText, width / 2, uiY * 1.4 );
             }
         } else if (this.gameMode === "degrees") {
             let degreeInfo = this._getDegreeName(int(this.currentDegree));
