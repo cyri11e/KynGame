@@ -8,6 +8,7 @@ class KynGame {
         // Mode de jeu
         this.gameMode = null; // "intervals" | "degrees" | "notes"
         this.useFlatMode = true;
+        this.hintShown = false;
 
         this.customConfig = {
             timerValues: [1000, 2000, 3000, 5000, 10000, Infinity],
@@ -102,6 +103,18 @@ update() {
 
     const now = millis();
     const timeSinceQuestionDisplay = now - this.questionDisplayTime;
+    
+if (this.gameMode === "blind" && !this.hintShown && this.startingNoteVisible) {
+    const elapsedSinceStart = now - this.startingNoteDisplayTime;
+    const timeRemaining = this.timeLimitSeconds * 1000 - elapsedSinceStart;
+
+    if (timeRemaining <= 2000) {
+        this.hintShown = true;
+    }
+}
+
+
+
 
     // Affichage différé de la note de départ
     if (!this.startingNoteVisible && timeSinceQuestionDisplay >= this.displayTimeDelay) {
@@ -184,6 +197,37 @@ handleNoteClick(clickedNote) {
         return;
     }
 
+    if (this.gameMode === "blind") {
+
+        if (!this.hintShown) {
+            // Réponse AVANT indice → 1 point
+            if (clickedNote.note === this.targetNote) {
+                this.score += 1;
+                this.answerWasCorrect = true;
+            } else {
+                this.answerWasCorrect = false;
+            }
+        } else {
+            // Réponse APRÈS indice → 0.5 point
+            if (clickedNote.note === this.targetNote) {
+                this.score += 0.5;
+                this.answerWasCorrect = true;
+            } else {
+                this.answerWasCorrect = false;
+            }
+        }
+
+        this.questionsAnswered++;
+        this.showingAnswer = true;
+
+        if (this.correctNotePosition) {
+            this.guitar.setPlayedNote([this.targetNote]);
+        }
+
+        this.state = "answer";
+        return;
+    }
+
     // à partir d’ici, le clic est accepté
         this.userSelectedNote = clickedNote;
 
@@ -211,85 +255,77 @@ handleNoteClick(clickedNote) {
     // MENUS
     // ---------------------------------------------------------
     _handleHomeClick(mx, my) {
-        const buttonY = height / 2 + 50;
-        const buttonWidth = 120;
-        const buttonHeight = 50;
+        requestFullscreen();
 
-        // Intervalles
-        if (this._inRect(mx, my, width / 2 - 200, buttonY, buttonWidth, buttonHeight)) {
-            this.gameMode = "intervals";
-            this.useFlatMode = random() > 0.5;
-            this.state = "difficulty";
-            return true;
-        }
+        const btnW = width * 0.40;
+        const btnH = height * 0.20;
+        const spacingX = btnW * 1.1;
+        const spacingY = btnH * 1.1;
 
-        // Degrés
-        if (this._inRect(mx, my, width / 2, buttonY, buttonWidth, buttonHeight)) {
-            this.gameMode = "degrees";
-            this.useFlatMode = random() > 0.5;
-            this.state = "difficulty";
-            return true;
-        }
+        const centerX = width / 2;
+        const centerY = height / 2 + 20;
 
-        // Notes
-        if (this._inRect(mx, my, width / 2 + 200, buttonY, buttonWidth, buttonHeight)) {
-            this.gameMode = "notes";
-            this.useFlatMode = random() > 0.5;
-            this.state = "difficulty";
-            return true;
+        const positions = [
+            { x: centerX - spacingX / 2, y: centerY - spacingY / 2, mode: 'intervals' },
+            { x: centerX + spacingX / 2, y: centerY - spacingY / 2, mode: 'degrees' },
+            { x: centerX - spacingX / 2, y: centerY + spacingY / 2, mode: 'notes' },
+            { x: centerX + spacingX / 2, y: centerY + spacingY / 2, mode: 'blind' }
+        ];
+
+        for (let p of positions) {
+            if (this._inRect(mx, my, p.x, p.y, btnW, btnH)) {
+                this.gameMode = p.mode;
+                this.useFlatMode = random() > 0.5;
+                this.state = "difficulty";
+                return true;
+            }
         }
 
         return false;
     }
 
-    _handleDifficultyClick(mx, my) {
-        const buttonY = height / 2 + 50;
-        const buttonWidth = 100;
-        const buttonHeight = 50;
-        const buttonsX = [
-                        width / 2 - 210,
-                        width / 2 - 105,
-                        width / 2,
-                        width / 2 + 105,
-                        width / 2 + 210   
-            ];
-
-        const difficulties = [
-            { label: 'NOOB',   time: 10 },
-            { label: 'SLOW',   time: 5 },
-            { label: 'NORMAL', time: 4 },
-            { label: 'EXPERT', time: 2 },
-            { label: 'CUSTOM', time: null }
-
-        ];
-
-        if (this._inRect(mx, my, width * 0.15, height - 80, 200, 60)) {
-            this.state = "home";
-            return true;
-        }
 
 
-        for (let i = 0; i < difficulties.length; i++) {
-            if (this._inRect(mx, my, buttonsX[i], buttonY, buttonWidth, buttonHeight)) {
 
-                this.difficulty = difficulties[i].label.toLowerCase();
+_handleDifficultyClick(mx, my) {
+    const btnW = width * 0.25;
+    const btnH = height * 0.12;
+    const spacing = height * 0.02;
 
-                if (difficulties[i].label === "CUSTOM") {
-                    this.state = "customConfig";   // 🔥 NOUVEAU ÉCRAN
-                    return true;
-                }
+    const startX = width * 0.1;
+    const startY = height * 0.2;
 
-                this.timeLimitSeconds = difficulties[i].time;
-                this._resetSessionState();
-                this._startNewQuestion();
-                this.state = "playing";
+    const difficulties = [
+        { label: 'NOOB',   time: 10 },
+        { label: 'SLOW',   time: 5 },
+        { label: 'NORMAL', time: 4 },
+        { label: 'EXPERT', time: 2 },
+        { label: 'CUSTOM', time: null }
+    ];
+
+    for (let i = 0; i < difficulties.length; i++) {
+        const y = startY + i * (btnH + spacing);
+
+        if (this._inRect(mx, my, startX, y, btnW, btnH)) {
+            this.difficulty = difficulties[i].label.toLowerCase();
+
+            if (difficulties[i].label === "CUSTOM") {
+                this.state = "customConfig";
                 return true;
             }
 
+            this.timeLimitSeconds = difficulties[i].time;
+            this._resetSessionState();
+            this._startNewQuestion();
+            this.state = "playing";
+            return true;
         }
-
-        return false;
     }
+
+    return false;
+}
+
+
 
     _handleCustomConfigClick(mx, my) {
 
@@ -486,6 +522,8 @@ _handleDirectionCyclerClick(mx, my) {
 
     this.startingNoteDisplayTime = 0;
     this.questionDisplayTime = millis();
+    this.hintShown = false;
+
 
     while (!validQuestion && attempts < 20) {
 
@@ -544,7 +582,32 @@ _handleDirectionCyclerClick(mx, my) {
 
             this.targetNote = this._calculateTargetNote(this.startingNote, interval);
             this.currentTargetNoteName = this.targetNote.match(/[A-G]#?b?/)[0];
+            
+            // --- Harmonisation des altérations du manche ---
+            if (this.targetNote.includes('#')) {
+                this.useFlatMode = false;   // force dièses
+            } else if (this.targetNote.includes('b')) {
+                this.useFlatMode = true;    // force bémols
+            } else {
+                this.useFlatMode = true;    // naturel → bémol par défaut
+            }
+
         }
+        else if (this.gameMode === "blind") {
+            const allowed = this._getIntervalsForCurrentDifficulty();
+            interval = random(allowed);
+
+            // direction custom
+            if (this.difficulty === "custom") {
+                const dir = this.customConfig.directionIndex;
+                if (dir === 1) interval *= -1;
+                if (dir === 2 && random() < 0.5) interval *= -1;
+            }
+
+            this.currentInterval = interval;
+            this.targetNote = this._calculateTargetNote(this.startingNote, interval);
+        }
+
 
         // --- 3. VALIDATION : la note existe sur le manche ---
         this.correctNotePosition = this._findNoteOnFretboard(this.targetNote);
@@ -732,6 +795,11 @@ _handleDirectionCyclerClick(mx, my) {
                 targetNote = targetNoteName + targetOctave;
             }
         }
+        // Jouer la note réponse juste après
+        setTimeout(() => {
+            console.log("Playing target note:", targetNote);
+            playNote(targetNote, 600);
+        }, 650);
 
         return targetNote;
     }
@@ -752,6 +820,11 @@ _handleDirectionCyclerClick(mx, my) {
     // RENDU UI COMPLET
     // ---------------------------------------------------------
     renderUI() {
+        if (isPortrait()) {
+            this._renderRotateDeviceOverlay();
+            return;
+        }
+
         push()
         if (this.state === "home") {
             this._renderHomeScreen();
@@ -767,6 +840,15 @@ _handleDirectionCyclerClick(mx, my) {
         pop()
     }
 
+    _renderRotateDeviceOverlay() {
+        push();
+        background(0, 0, 0, 200);
+        fill(255);
+        textAlign(CENTER, CENTER);
+        textSize(32);
+        text("Tournez votre appareil en mode paysage", width / 2, height / 2);
+        pop();
+    }
 
 
     _renderCustomConfigScreen() {
@@ -809,82 +891,81 @@ _handleDirectionCyclerClick(mx, my) {
 
 
 
-    _renderHomeScreen() {
-        fill(0);
-        textSize(48);
-        textAlign(CENTER, CENTER);
-        text('The KYN Game', width / 2, height / 2 - 100);
+_renderHomeScreen() {
+    fill(0);
+    textSize(120);
+    textAlign(CENTER, CENTER);
+    text('The KYN Game', width / 2, height / 8 );
 
-        textSize(32);
-        text('Know Your Neck !', width / 2, height / 2 - 50);
+    textSize(62);
+    text('Know Your Neck !', width / 2,  height / 4 );
 
-        textSize(24);
-        text('Sélectionnez votre type de jeu', width / 2, height / 2 - 10);
+    textSize(50);
+    text('Sélectionnez votre type de jeu', width / 2, 5 * height / 6 );
 
-        let buttonY = height / 2 + 50;
-        let buttonWidth = 120;
-        let buttonHeight = 50;
+    // --- Grille 2x2 ---
+const btnW = width * 0.40;     // 25% de la largeur
+const btnH = height * 0.20;    // 8% de la hauteur
+    const spacingX = btnW * 1.1;
+    const spacingY = btnH * 1.1;
 
-        // Intervalles
-        this._drawButton(width / 2 - 200, buttonY, buttonWidth, buttonHeight, '1 - INTERVALLES');
+    const centerX = width / 2;
+    const centerY = height / 2 + 20;
 
-        // Degrés
-        this._drawButton(width / 2, buttonY, buttonWidth, buttonHeight, '2 - DEGRÉS');
+    // Coordonnées des 4 boutons
+    const positions = [
+        { x: centerX - spacingX / 2, y: centerY - spacingY / 2, label: 'INTERVALLES', mode: 'intervals' },
+        { x: centerX + spacingX / 2, y: centerY - spacingY / 2, label: 'DEGRÉS', mode: 'degrees' },
+        { x: centerX - spacingX / 2, y: centerY + spacingY / 2, label: 'NOTES', mode: 'notes' },
+        { x: centerX + spacingX / 2, y: centerY + spacingY / 2, label: 'BLIND', mode: 'blind' }
+    ];
 
-        // Notes
-        this._drawButton(width / 2 + 200, buttonY, buttonWidth, buttonHeight, '3 - NOTES');
-
-        fill(100);
-        textSize(14);
-        text('Intervalles: montée/descente', width / 2 - 200, height / 2 + 110);
-        text('Degrés: dans une gamme', width / 2, height / 2 + 110);
-        text('Notes: trouver une note spécifique', width / 2 + 200, height / 2 + 110);
+    // Dessin des boutons
+    for (let p of positions) {
+        this._drawButton(p.x, p.y, btnW, btnH, p.label,'SlateBlue');
     }
+}
 
-    _renderDifficultyScreen() {
-        fill(0);
-        textSize(48);
-        textAlign(CENTER, CENTER);
-        text('The KYN Game', width / 2, height / 2 - 100);
 
-        textSize(32);
-        text('Know Your Neck !', width / 2, height / 2 - 50);
+_renderDifficultyScreen() {
 
-        textSize(24);
-        text('Sélectionnez votre niveau de difficulté', width / 2, height / 2 - 10);
+    // Titre centré
+    fill(0);
+    textSize(36);
+    textAlign(CENTER, TOP);
+    text("Sélectionnez la difficulté", width / 2, 10);
 
-        let buttonY = height / 2 + 50;
-        let buttonWidth = 100;
-        let buttonHeight = 50;
+    // Paramètres
+const btnW = width * 0.25;     // 25% de la largeur
+const btnH = height * 0.12;    // 8% de la hauteur
+const spacing = height * 0.02; // 2% de la hauteur
 
-        const buttonsX = [
-            width / 2 - 210,
-            width / 2 - 105,
-            width / 2,
-            width / 2 + 105,
-            width / 2 + 210
-        ];
 
-        let difficulties = [
-            { label: 'NOOB', time: '10s' },
-            { label: 'SLOW', time: '5s' },
-            { label: 'NORMAL', time: '4s' },
-            { label: 'EXPERT', time: '2s' },
-            { label: 'CUSTOM', time: null }
-        ];
+    const startX = width * 0.1;
+    const startY = height * 0.2;
 
-        for (let i = 0; i < difficulties.length; i++) {
-            this._drawButton(buttonsX[i], buttonY, buttonWidth, buttonHeight, difficulties[i].label);
+    const panelX = startX + 2*btnW ;
+    const panelW = width * 0.7;
 
-            fill(255);
-            textSize(12);
+    const difficulties = [
+        { label: 'NOOB',   time: '10s', desc: ["⏱10s", "Triades ascendantes uniquement"] },
+        { label: 'SLOW',   time: '5s',  desc: ["⏱5s", "Triades dans les 2 sens"] },
+        { label: 'NORMAL', time: '4s',  desc: ["⏱4s", "Gammes majeure/mineure"] },
+        { label: 'EXPERT', time: '2s',  desc: ["⏱2s", "Tout! tout! tout!"] },
+        { label: 'CUSTOM', time: '',    desc: ["C'est vous qui voyez"] }
+    ];
 
-            if (difficulties[i].time !== null) {
-                text(difficulties[i].time, buttonsX[i], buttonY + 20);
-            }
-        }
+    for (let i = 0; i < difficulties.length; i++) {
+        const y = startY + i * (btnH + spacing);
+
+        // Bouton de difficulté
+        this._drawButton(startX, y, btnW, btnH, difficulties[i].label, 'SteelBlue');
+
+        // Panneau explicatif → rendu comme un bouton non interactif
+        const panelText = difficulties[i].desc.join(" — ");
+        this._drawButton(panelX, y, panelW, btnH, panelText, 'DarkKhaki');
     }
-
+}
 
     _renderGameScreen() {
         let uiY = this.guitar.neckY + this.guitar.neckHeight + 80;
@@ -915,6 +996,22 @@ _handleDirectionCyclerClick(mx, my) {
         // Consigne selon le mode
         fill(0);
         textAlign(CENTER, TOP);
+
+        if (this.gameMode === "blind") {
+            textSize(32);
+            fill(0);
+
+            if (!this.hintShown) {
+                text("Find the note", width / 2, uiY);
+            } else {
+                // Affichage identique au mode intervalle
+                let intervalInfo = this._getIntervalName(int(this.currentInterval));
+                let directionText = this.currentInterval >= 0 ? "UP" : "DOWN";
+                text(directionText + " " + intervalInfo.code, width / 2, uiY);
+            }
+
+            return; // éviter d'afficher les consignes des autres modes
+        }
 
         if (this.gameMode === "intervals") {
             let intervalInfo = this._getIntervalName(int(this.currentInterval));
@@ -1107,7 +1204,7 @@ _renderDirectionCycler(startX, startY, cellW, cellH) {
         fill(0);
         textSize(48);
         textAlign(CENTER, CENTER);
-        text('Session terminée!', width / 2, height / 2 - 100);
+        text('GAME OVER', width / 2, height / 2 - 100);
 
         textSize(32);
         text('Score: ' + this.score + '/' + this.sessionQuestions, width / 2, height / 2 - 20);
@@ -1126,7 +1223,7 @@ _renderDirectionCycler(startX, startY, cellW, cellH) {
             text('Prends ton temps', width / 2, height / 2 + 30);
             fill(0);
             textSize(16);
-            text('(Score trop faible pour afficher le temps)', width / 2, height / 2 + 60);
+            text('(Travaille la précision plutot que la vitesse)', width / 2, height / 2 + 60);
         }
 
         let restartButtonY = height / 2 + 120;
@@ -1136,18 +1233,18 @@ _renderDirectionCycler(startX, startY, cellW, cellH) {
         this._drawButton(width / 2, restartButtonY, restartButtonWidth, restartButtonHeight, 'Recommencer');
     }
 
-    _drawButton(cx, cy, w, h, label) {
+    _drawButton(cx, cy, w, h, label, fillColor = 'blue',  ) {
         push();
         rectMode(CENTER);
         textAlign(CENTER, CENTER);
 
         // Fond
-        fill(0, 100, 200);
+        fill(fillColor);
         rect(cx, cy, w, h, 8);
 
         // Texte
         fill(255);
-        textSize(18);
+        textSize(h/2);
         text(label, cx, cy);
 
         pop();

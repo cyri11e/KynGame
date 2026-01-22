@@ -6,18 +6,19 @@ let activeSounds = {};
 
 
 function setup() {
-    createCanvas(windowWidth, windowHeight);
+    createCanvas(window.innerWidth, window.innerHeight);
+
 
 
     guitarSF = MIDI.Soundfont.electric_guitar_clean;
-    guitar = new Guitar(13);
+    guitar = new Guitar(12);
     game = new KynGame(guitar);
 
 }
 
 
 function windowResized() {
-    resizeCanvas(windowWidth, windowHeight);
+    resizeCanvas(window.innerWidth, window.innerHeight);
     if (guitar) guitar.resize();
 }
 
@@ -111,4 +112,16 @@ function playNote(noteName, duration = 1000) {
         snd.stop(id);
         delete activeSounds[flat];
     }, duration);
+}
+
+function requestFullscreen() {
+    let el = document.documentElement;
+
+    if (el.requestFullscreen) el.requestFullscreen();
+    else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+    else if (el.msRequestFullscreen) el.msRequestFullscreen();
+}
+
+function isPortrait() {
+    return window.innerHeight > window.innerWidth;
 }

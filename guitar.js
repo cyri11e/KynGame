@@ -81,7 +81,7 @@ class Guitar{
         this.drawStrings();
         this.drawMarkers();
         this.drawOpenNotes();
-        this.drawENotes();
+        //this.drawENotes();
         this.drawPlayedNotes();
         this.drawStartingNote();
        // this.drawHoveredNote();
