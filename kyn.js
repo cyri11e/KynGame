@@ -2,6 +2,9 @@ class KynGame {
     constructor(guitar) {
         this.guitar = guitar;
 
+        // ui
+        this.ui = new UIButtonManager();
+    
         // États principaux
         this.state = "home"; // "home" | "difficulty" | "playing" | "answer" | "end"
 
@@ -15,7 +18,10 @@ class KynGame {
             timerIndex: 2,          // 3s par défaut
             directionIndex: 0,      // 0: UP, 1: DOWN, 2: UP & DOWN
             selectedItems: new Set(),
-            presetName: null
+            presetName: null,
+            accordsIndex: 0,
+            pentaIndex: 0,
+            diatoniqueIndex: 0
         };
 
 
@@ -156,10 +162,9 @@ mouseClicked(mx, my) {
     if (this.state === "home") return this._handleHomeClick(mx, my);
     if (this.state === "difficulty") return this._handleDifficultyClick(mx, my);
     if (this.state === "customConfig") {
-        if (this._handleDirectionCyclerClick(mx, my)) return true;
-        if (this._handleCustomGridClick(mx, my)) return true;
-        return this._handleCustomConfigClick(mx, my);
+        return UICustomScreen.click(this, this.ui, mx, my);
     }
+
     if (this.state === "end") return this._handleEndClick(mx, my);
 
     // En mode playing/answer → NE TOUCHE PAS AUX HANDLERS CUSTOM
@@ -254,251 +259,23 @@ handleNoteClick(clickedNote) {
     // ---------------------------------------------------------
     // MENUS
     // ---------------------------------------------------------
-    _handleHomeClick(mx, my) {
-        requestFullscreen();
-
-        const btnW = width * 0.40;
-        const btnH = height * 0.20;
-        const spacingX = btnW * 1.1;
-        const spacingY = btnH * 1.1;
-
-        const centerX = width / 2;
-        const centerY = height / 2 + 20;
-
-        const positions = [
-            { x: centerX - spacingX / 2, y: centerY - spacingY / 2, mode: 'intervals' },
-            { x: centerX + spacingX / 2, y: centerY - spacingY / 2, mode: 'degrees' },
-            { x: centerX - spacingX / 2, y: centerY + spacingY / 2, mode: 'notes' },
-            { x: centerX + spacingX / 2, y: centerY + spacingY / 2, mode: 'blind' }
-        ];
-
-        for (let p of positions) {
-            if (this._inRect(mx, my, p.x, p.y, btnW, btnH)) {
-                this.gameMode = p.mode;
-                this.useFlatMode = random() > 0.5;
-                this.state = "difficulty";
-                return true;
-            }
-        }
-
-        return false;
-    }
+_handleHomeClick(mx, my) {
+    return UIHomeScreen.click(this, this.ui, mx, my);
+}
 
 
 
 
 _handleDifficultyClick(mx, my) {
-    const btnW = width * 0.25;
-    const btnH = height * 0.12;
-    const spacing = height * 0.02;
-
-    const startX = width * 0.1;
-    const startY = height * 0.2;
-
-    const difficulties = [
-        { label: 'NOOB',   time: 10 },
-        { label: 'SLOW',   time: 5 },
-        { label: 'NORMAL', time: 4 },
-        { label: 'EXPERT', time: 2 },
-        { label: 'CUSTOM', time: null }
-    ];
-
-    for (let i = 0; i < difficulties.length; i++) {
-        const y = startY + i * (btnH + spacing);
-
-        if (this._inRect(mx, my, startX, y, btnW, btnH)) {
-            this.difficulty = difficulties[i].label.toLowerCase();
-
-            if (difficulties[i].label === "CUSTOM") {
-                this.state = "customConfig";
-                return true;
-            }
-
-            this.timeLimitSeconds = difficulties[i].time;
-            this._resetSessionState();
-            this._startNewQuestion();
-            this.state = "playing";
-            return true;
-        }
-    }
-
-    return false;
+    return UIDifficultyScreen.click(this, this.ui, mx, my);
 }
 
 
-
-    _handleCustomConfigClick(mx, my) {
-
-        // --- 1. Bouton Retour ---
-        if (this._inRect(mx, my, width * 0.15, height - 80, 200, 60)) {
-            this.state = "difficulty";
-            return true;
-        }
-
-        // --- 2. Bouton START ---
-        if (this._inRect(mx, my, width/2, height - 80, 300, 80)) {
-            this.difficulty = "custom";
-            this.timeLimitSeconds = this.customConfig.timerValues[this.customConfig.timerIndex];
-            this._resetSessionState();
-            this._startNewQuestion();
-            this.state = "playing";
-            return true;
-        }
-
-if (this._handleDirectionCyclerClick(mx, my)) return true;
-
-        // --- 3. Clic sur la grille ---
-        if (this._handleCustomGridClick(mx, my)) {
-            return true;
-        }
-
-        // --- 4. Clic sur les boutons de direction ---
-        if (this._handleDirectionClick(mx, my)) {
-            return true;
-        }
-
-        // --- 5. Clic sur les presets (si tu veux les activer plus tard) ---
-        // if (this._handlePresetClick(mx, my)) return true;
-
-        return false;
-    }
-
-
-_handleDirectionClick(mx, my) {
-    const areaX = width * 0.75;
-    const cx = areaX + (width * 0.25) / 2;
-    const startY = 150;
-    const btnW = 200;
-    const btnH = 60;
-    const spacing = 20;
-
-    for (let i = 0; i < 3; i++) {
-        const y = startY + i * (btnH + spacing);
-
-        // centre du bouton
-        const cy = y + btnH / 2;
-
-        if (this._inRect(mx, my, cx, cy, btnW, btnH)) {
-            this.customConfig.directionIndex = i;
-            return true;
-        }
-    }
-
-    return false;
-}
-
-
-
-_handleCustomGridClick(mx, my) {
-    const cols = 4;
-    const rows = 3;
-
-    const areaWidth = width * 0.75;
-    const offsetX = width * 0.25;
-
-    const cellW = (areaWidth * 0.8) / cols;
-    const cellH = cellW * 0.6;
-
-    const totalWidth = cols * cellW;
-    const startX = offsetX + (areaWidth - totalWidth) / 2;
-    const startY = 150;
-
-    let i = 0;
-
-    for (let r = rows - 1; r >= 0; r--) {
-        for (let c = 0; c < cols; c++) {
-
-            // case DIR gérée ailleurs
-            if (r === 0 && c === 0) continue;
-
-            const x = startX + c * cellW;
-            const y = startY + r * cellH;
-
-            const cx = x + cellW / 2;
-            const cy = y + cellH / 2;
-
-            if (this._inRect(mx, my, cx, cy, cellW, cellH)) {
-                if (this.customConfig.selectedItems.has(i)) {
-                    this.customConfig.selectedItems.delete(i);
-                } else {
-                    this.customConfig.selectedItems.add(i);
-                }
-                return true;
-            }
-
-            i++;
-            if (i >= 11) return false;
-        }
-    }
-
-    return false;
-}
-
-
-_handleDirectionCyclerClick(mx, my) {
-    const cols = 4;
-    const areaWidth = width * 0.75;
-    const offsetX = width * 0.25;
-
-    const cellW = (areaWidth * 0.8) / cols;
-    const cellH = cellW * 0.6;
-
-    const totalWidth = cols * cellW;
-    const startX = offsetX + (areaWidth - totalWidth) / 2;
-    const startY = 150;
-
-    const x = startX;
-    const y = startY;
-
-    const cx = x + cellW / 2;
-    const cy = y + cellH / 2;
-
-    if (this._inRect(mx, my, cx, cy, cellW, cellH)) {
-        this.customConfig.directionIndex =
-            (this.customConfig.directionIndex + 1) % 3;
-        return true;
-    }
-
-    return false;
-}
-
-
-_handleDirectionCyclerClick(mx, my) {
-    const cellW = 160;
-    const cellH = 100;
-
-    const cols = 4;
-    const totalWidth = cols * cellW;
-    const startX = width * 0.25 + (width * 0.75 - totalWidth) / 2;
-    const startY = 150;
-
-    const x = startX;
-    const y = startY;
-
-    const cx = x + cellW / 2;
-    const cy = y + cellH / 2;
-
-    if (this._inRect(mx, my, cx, cy, cellW, cellH)) {
-        this.customConfig.directionIndex =
-            (this.customConfig.directionIndex + 1) % 3;
-        return true;
-    }
-
-    return false;
-}
 
     _handleEndClick(mx, my) {
-        const restartButtonY = height / 2 + 120;
-        const restartButtonWidth = 150;
-        const restartButtonHeight = 50;
-
-        if (this._inRect(mx, my, width / 2, restartButtonY, restartButtonWidth, restartButtonHeight)) {
-            this._fullReset();
-            this.state = "home";
-            return true;
-        }
-        return false;
+        return UIEndScreen.click(this, this.ui, mx, my);
     }
+
 
     _inRect(mx, my, cx, cy, w, h) {
         return mx > cx - w / 2 && mx < cx + w / 2 &&
@@ -851,120 +628,21 @@ _handleDirectionCyclerClick(mx, my) {
     }
 
 
-    _renderCustomConfigScreen() {
-
-        // Label dynamique
-        let label = "";
-        if (this.gameMode === "intervals") label = "Choix des intervalles";
-        else if (this.gameMode === "degrees") label = "Choix des degrés";
-        else if (this.gameMode === "notes") label = "Choix des notes";
-
-        const leftWidth = width * 0.25;
-        const rightWidth = width * 0.75;
-
-        // ---------------------------
-        // 1. Zone PRESETS (gauche)
-        // ---------------------------
-        this._renderCustomPresetsPanel(0, 0, leftWidth, height);
-
-        // ---------------------------
-        // 2. Zone principale (droite)
-        // ---------------------------
-        fill(255);
-        textAlign(CENTER, CENTER);
-        textSize(32);
-        text(label, leftWidth + rightWidth / 2, 60);
-
-        // Grille centrée dans la zone droite
-        this._renderCustomGrid(150, leftWidth, rightWidth);
-
-
-
-        // Gros bouton START
-        this._drawButton(leftWidth + rightWidth / 2, height - 80, 300, 80, "START");
-        
-        this._drawButton(width * 0.15, height - 80, 200, 60, "BACK");
-
-    }
-
+_renderCustomConfigScreen() {
+    UICustomScreen.render(this, this.ui);
+}
 
 
 
 
 _renderHomeScreen() {
-    fill(0);
-    textSize(120);
-    textAlign(CENTER, CENTER);
-    text('The KYN Game', width / 2, height / 8 );
-
-    textSize(62);
-    text('Know Your Neck !', width / 2,  height / 4 );
-
-    textSize(50);
-    text('Sélectionnez votre type de jeu', width / 2, 5 * height / 6 );
-
-    // --- Grille 2x2 ---
-const btnW = width * 0.40;     // 25% de la largeur
-const btnH = height * 0.20;    // 8% de la hauteur
-    const spacingX = btnW * 1.1;
-    const spacingY = btnH * 1.1;
-
-    const centerX = width / 2;
-    const centerY = height / 2 + 20;
-
-    // Coordonnées des 4 boutons
-    const positions = [
-        { x: centerX - spacingX / 2, y: centerY - spacingY / 2, label: 'INTERVALLES', mode: 'intervals' },
-        { x: centerX + spacingX / 2, y: centerY - spacingY / 2, label: 'DEGRÉS', mode: 'degrees' },
-        { x: centerX - spacingX / 2, y: centerY + spacingY / 2, label: 'NOTES', mode: 'notes' },
-        { x: centerX + spacingX / 2, y: centerY + spacingY / 2, label: 'BLIND', mode: 'blind' }
-    ];
-
-    // Dessin des boutons
-    for (let p of positions) {
-        this._drawButton(p.x, p.y, btnW, btnH, p.label,'SlateBlue');
-    }
+    UIHomeScreen.render(this, this.ui);
 }
 
 
+
 _renderDifficultyScreen() {
-
-    // Titre centré
-    fill(0);
-    textSize(36);
-    textAlign(CENTER, TOP);
-    text("Sélectionnez la difficulté", width / 2, 10);
-
-    // Paramètres
-const btnW = width * 0.25;     // 25% de la largeur
-const btnH = height * 0.12;    // 8% de la hauteur
-const spacing = height * 0.02; // 2% de la hauteur
-
-
-    const startX = width * 0.1;
-    const startY = height * 0.2;
-
-    const panelX = startX + 2*btnW ;
-    const panelW = width * 0.7;
-
-    const difficulties = [
-        { label: 'NOOB',   time: '10s', desc: ["⏱10s", "Triades ascendantes uniquement"] },
-        { label: 'SLOW',   time: '5s',  desc: ["⏱5s", "Triades dans les 2 sens"] },
-        { label: 'NORMAL', time: '4s',  desc: ["⏱4s", "Gammes majeure/mineure"] },
-        { label: 'EXPERT', time: '2s',  desc: ["⏱2s", "Tout! tout! tout!"] },
-        { label: 'CUSTOM', time: '',    desc: ["C'est vous qui voyez"] }
-    ];
-
-    for (let i = 0; i < difficulties.length; i++) {
-        const y = startY + i * (btnH + spacing);
-
-        // Bouton de difficulté
-        this._drawButton(startX, y, btnW, btnH, difficulties[i].label, 'SteelBlue');
-
-        // Panneau explicatif → rendu comme un bouton non interactif
-        const panelText = difficulties[i].desc.join(" — ");
-        this._drawButton(panelX, y, panelW, btnH, panelText, 'DarkKhaki');
-    }
+    UIDifficultyScreen.render(this, this.ui);
 }
 
     _renderGameScreen() {
@@ -1107,71 +785,20 @@ const spacing = height * 0.02; // 2% de la hauteur
     }
 
 
-_renderCustomGrid(topY, offsetX = 0, areaWidth = width) {
-    const cols = 4;
-    const rows = 3;
-
-    const cellW = (areaWidth * 0.8) / cols;
-    const cellH = cellW * 0.6;
-
-    const startX = offsetX + (areaWidth - cols * cellW) / 2;
-    const startY = topY;
-
-    let labels;
-    if (this.gameMode === "intervals") {
-        labels = ['P1','m2','M2','m3','M3','P4','TT','P5','m6','M6','m7','M7'];
-    } else if (this.gameMode === "degrees") {
-        labels = ['1','b2','2','b3','3','4','#4/b5','5','b6','6','b7','7'];
-    } else if (this.gameMode === "notes") {
-        labels = ['C','C#/Db','D','D#/Eb','E','F','F#/Gb','G','G#/Ab','A','A#/Bb','B'];
-    } else {
-        labels = Array(12).fill("?");
-    }
-
-    // on n’utilise que 11 labels (1..11), la 12e est ignorée
-    let i = 0;
-
-    for (let r = rows - 1; r >= 0; r--) {
-        for (let c = 0; c < cols; c++) {
-
-            // bas-gauche = DIR
-            if (r === 0 && c === 0) {
-                this._renderDirectionCycler(startX, startY, cellW, cellH);
-                continue;
-            }
-
-            const x = startX + c * cellW;
-            const y = startY + r * cellH;
-
-            const selected = this.customConfig.selectedItems.has(i);
-
-            fill(selected ? '#66cc66' : '#333333');
-            rect(x, y, cellW, cellH, 12);
-
-            fill(255);
-            textAlign(CENTER, CENTER);
-            textSize(cellH * 0.4);
-            text(labels[i], x + cellW / 2, y + cellH / 2);
-
-            i++;
-            if (i >= 11) return; // on s’arrête à 11
-        }
-    }
-}
-
-_renderDirectionCycler(startX, startY, cellW, cellH) {
-    const x = startX;
-    const y = startY; // bas-gauche
-
+_
+_renderDirectionCycler(x, y, cellW, cellH) {
     const cx = x + cellW / 2;
     const cy = y + cellH / 2;
 
     const states = ["UP", "UP&DOWN", "DOWN"];
     const label = states[this.customConfig.directionIndex];
 
-    fill("#444");
-    rect(x, y, cellW, cellH, 12);
+    stroke("#ffaa00");     // liseret orange
+    strokeWeight(4);
+    fill("#663300");       // fond marron/orange foncé
+    rect(x, y, cellW, cellH); // carré, pas de radius
 
+    noStroke();
     fill(255);
     textAlign(CENTER, CENTER);
     textSize(cellH * 0.35);
@@ -1179,59 +806,11 @@ _renderDirectionCycler(startX, startY, cellW, cellH) {
 }
 
 
-    _renderCustomPresetsPanel(x, y, w, h) {
-        const btnW = w * 0.8;
-        const btnH = 60;
-        const startX = x + w * 0.5;
-        let currentY = 120;
 
-        const presets = [
-            "Triades",
-            "Modes",
-            "Pentatonique",
-            "Blues",
-            "Chromatique"
-        ];
+_renderEndScreen() {
+    UIEndScreen.render(this, this.ui);
+}
 
-        for (let p of presets) {
-            this._drawButton(startX, currentY, btnW, btnH, p);
-            currentY += btnH + 20;
-        }
-    }
-
-
-    _renderEndScreen() {
-        fill(0);
-        textSize(48);
-        textAlign(CENTER, CENTER);
-        text('GAME OVER', width / 2, height / 2 - 100);
-
-        textSize(32);
-        text('Score: ' + this.score + '/' + this.sessionQuestions, width / 2, height / 2 - 20);
-
-        let percentageScore = (this.score / this.sessionQuestions) * 10;
-        if (percentageScore >= 8) {
-            let averageTimeMs = 0;
-            if (this.totalCorrectResponses > 0) {
-                averageTimeMs = this.responseTimes.reduce((a, b) => a + b, 0) / this.totalCorrectResponses;
-            }
-            let averageTime = averageTimeMs / 1000;
-            text('Temps moyen: ' + averageTime.toFixed(1) + 's', width / 2, height / 2 + 30);
-        } else {
-            fill(150, 0, 0);
-            textSize(28);
-            text('Prends ton temps', width / 2, height / 2 + 30);
-            fill(0);
-            textSize(16);
-            text('(Travaille la précision plutot que la vitesse)', width / 2, height / 2 + 60);
-        }
-
-        let restartButtonY = height / 2 + 120;
-        let restartButtonWidth = 150;
-        let restartButtonHeight = 50;
-
-        this._drawButton(width / 2, restartButtonY, restartButtonWidth, restartButtonHeight, 'Recommencer');
-    }
 
     _drawButton(cx, cy, w, h, label, fillColor = 'blue',  ) {
         push();
