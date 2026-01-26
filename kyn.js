@@ -1,6 +1,10 @@
 class KynGame {
     constructor(guitar) {
         this.guitar = guitar;
+        this.flashImage = null;   // l’image générée une seule fois
+        this.flashUntil = 0;      // timestamp de fin
+        this.flashTriggered = false;
+
 
         // ui
         this.ui = new UIButtonManager();
@@ -66,6 +70,40 @@ class KynGame {
         this.customPresets = CUSTOM_INTERVAL_PRESETS;
 
     }
+
+    triggerFlash(isCorrect) {
+
+        let pg = createGraphics(width, height);
+
+        // Fond
+        pg.noStroke();
+        pg.fill(isCorrect ? color(0,180,0) : color(200,0,0));
+        pg.rect(0, 0, width, height);
+
+        // Emojis (générés UNE seule fois)
+        pg.textAlign(CENTER, CENTER);
+        pg.textSize(width * 0.15);
+        pg.fill(255);
+
+        let emojisGood = ["😄", "🎉", "✨", "👏", "😎"];
+        let emojisBad  = ["😢", "💩", "😡", "👎", "😭"];
+        let list = isCorrect ? emojisGood : emojisBad;
+
+        for (let i = 0; i < 20; i++) {
+            pg.text(list[int(random(list.length))], random(width), random(height));
+        }
+
+        // Texte central
+        pg.textSize(width * 0.15);
+        pg.textStyle(BOLD);
+        pg.fill(255);
+        pg.text(isCorrect ? "Correct !" : "Raté…", width / 2, height / 2);
+
+        // Stockage
+        this.flashImage = pg;
+        this.flashUntil = millis() + 400;
+    }
+
 
     // ---------------------------------------------------------
     // BOUCLE PRINCIPALE
@@ -300,6 +338,7 @@ _handleDifficultyClick(mx, my) {
     this.startingNoteDisplayTime = 0;
     this.questionDisplayTime = millis();
     this.hintShown = false;
+this.flashTriggered = false;
 
 
     while (!validQuestion && attempts < 20) {
@@ -647,85 +686,104 @@ _renderDifficultyScreen() {
 
 _renderGameScreen() {
 
-    // ============================================================
-    // 1) DÉCOUPAGE DE L'ÉCRAN EN 2 ZONES 50/50
-    // ============================================================
-
-    const topHalfTop = 0;
-    const topHalfBottom = height * 0.5;
-
-    const bottomHalfTop = height * 0.5;
-    const bottomHalfHeight = height * 0.5;
-
 
     // ============================================================
-    // 2) POSITIONNEMENT DU MANCHE DANS LA MOITIÉ BASSE
-    //    - centré verticalement
-    //    - décalé vers la droite pour libérer les cordes à vide
-    // ============================================================
+// ============================================================
+// FLASH VISUEL FIXE + FADE OUT
+// ============================================================
+if (this.flashImage && millis() < this.flashUntil) {
 
-    // Position verticale : centré dans la moitié basse
-    this.guitar.neckY = bottomHalfTop + (bottomHalfHeight - this.guitar.neckHeight) / 2;
+    const remaining = this.flashUntil - millis();
+    let alpha = 255;
 
-    // Décalage horizontal vers la droite (10% de l'écran)
-    const offsetX = width * 0.10;
-    this.guitar.neckX = offsetX;
+    // Fade-out sur les 100 dernières ms
+    if (remaining < 100) {
+        alpha = map(remaining, 0, 100, 0, 255);
+    }
 
+    push();
+    tint(255, alpha);   // applique l’alpha sur l’image
+    image(this.flashImage, 0, 0);
+    pop();
 
-    // ============================================================
-    // 3) POSITION DES CONSIGNES DANS LA MOITIÉ HAUTE
-    // ============================================================
+    return;
+}
 
-    // uiY = ligne principale des consignes
-    let uiY = topHalfTop + (topHalfBottom - topHalfTop) * 0.45;
 
 
     // ============================================================
-    // 4) SCORE (en haut)
+    // 1) DÉCOUPAGE DE L'ÉCRAN
+    // ============================================================
+
+    const topH = height * 0.5;
+    const bottomH = height * 0.5;
+
+    // Découpage horizontal de la moitié haute
+    const scoreY       = 0;
+    const scoreH       = topH * 0.25;
+
+    const consigneY    = scoreY + scoreH;
+    const consigneH    = topH * 0.50;
+
+    const descY        = consigneY + consigneH;
+    const descH        = topH * 0.25;
+
+
+    // ============================================================
+    // 2) POSITIONNEMENT DU MANCHE (moitié basse)
+    // ============================================================
+
+    this.guitar.neckY = topH + (bottomH - this.guitar.neckHeight) / 2;
+    this.guitar.neckX = width * 0.10; // décalage pour cordes à vide
+
+
+    // ============================================================
+    // 3) SCORE (bande haute 25%)
     // ============================================================
 
     fill(0);
     textAlign(CENTER, TOP);
-    textSize(height/8);
-    text('Score: ' + this.score, width / 2, topHalfTop);
+    textSize(scoreH * 0.6);
+    text("Score: " + this.score, width / 2, scoreY + scoreH * 0.1);
 
 
     // ============================================================
-    // 5) TIMER (en haut à gauche)
+    // 4) TIMER (toujours dans la bande score)
     // ============================================================
 
     if (this.startingNoteVisible && !this.showingAnswer) {
-        let timeElapsedSinceStart = millis() - this.startingNoteDisplayTime;
-        let timeRemaining = this.timeLimitSeconds * 1000 - timeElapsedSinceStart;
-        let secondsRemaining = max(0, timeRemaining / 1000);
 
-        if (secondsRemaining > 2) fill(0);
-        else if (secondsRemaining > 1) fill(200,150,0);
+        let elapsed = millis() - this.startingNoteDisplayTime;
+        let remaining = this.timeLimitSeconds * 1000 - elapsed;
+        let sec = max(0, remaining / 1000);
+
+        if (sec > 2) fill(0);
+        else if (sec > 1) fill(200,150,0);
         else fill(200,0,0);
 
-        textSize(40);
+        textSize(scoreH * 0.4);
         textAlign(LEFT, TOP);
-        text(secondsRemaining.toFixed(1) + 's', width * 0.05, topHalfTop + 10);
+        text(sec.toFixed(1) + "s", width * 0.05, scoreY + scoreH * 0.15);
     }
 
 
     // ============================================================
-    // 6) CONSIGNES (dans la moitié haute)
-    //    — AUCUNE TAILLE MODIFIÉE —
+    // 5) CONSIGNE (bande centrale 50%)
     // ============================================================
 
     fill(0);
     textAlign(CENTER, TOP);
+    textSize(consigneH);
+
+    const consigneCenterY = consigneY + consigneH * 0.15;
 
     if (this.gameMode === "blind") {
-        textSize(32);
-
         if (!this.hintShown) {
-            text("Find the note", width / 2, uiY);
+            text("Find the note", width / 2, consigneCenterY);
         } else {
-            let intervalInfo = this._getIntervalName(int(this.currentInterval));
-            let directionText = this.currentInterval >= 0 ? "UP" : "DOWN";
-            text(directionText + " " + intervalInfo.code, width / 2, uiY);
+            let info = this._getIntervalName(int(this.currentInterval));
+            let dir = this.currentInterval >= 0 ? "UP" : "DOWN";
+            text(dir + " " + info.code, width / 2, consigneCenterY);
         }
         return;
     }
@@ -733,37 +791,26 @@ _renderGameScreen() {
 
     if (this.gameMode === "intervals") {
 
-        let intervalInfo = this._getIntervalName(int(this.currentInterval));
-        let directionText = "";
-        let codeText = "";
-        let nameText = "";
+        let info = this._getIntervalName(int(this.currentInterval));
+        let dir = this.currentInterval > 0 ? "UP" :
+                  this.currentInterval < 0 ? "DOWN" : "FIND";
+        let code = this.currentInterval === 0 ? "unisson" : info.code;
+        let name = this.currentInterval === 0 ? "" : info.fr;
 
-        if (this.currentInterval === 0) {
-            directionText = "FIND";
-            codeText = "unisson";
-        } else if (this.currentInterval > 0) {
-            directionText = "UP";
-            codeText = intervalInfo.code;
-            nameText = intervalInfo.fr;
-        } else {
-            directionText = "DOWN";
-            codeText = intervalInfo.code;
-            nameText = intervalInfo.fr;
-        }
-
-        textSize(height/4);
+        // CONSIGNE (milieu)
         textStyle(BOLD);
-        text(directionText + ' ' + codeText, width / 2, uiY);
+        text(dir + " " + code, width / 2, consigneCenterY);
 
-        if (nameText) {
-            textSize(height/9);
+        // DESCRIPTION (bande du bas)
+        if (name) {
+            textSize(descH );
             textStyle(NORMAL);
             text(
-                (directionText == "UP" ? 'Monte ' : 'Descends ') +
-                (nameText == 'triton' ? "d\'un " : "d\'une ") +
-                nameText,
+                (dir === "UP" ? "Monte " : "Descends ") +
+                (name === "triton" ? "d'un " : "d'une ") +
+                name,
                 width / 2,
-                uiY + (topHalfBottom - topHalfTop) * 0.20
+                descY + descH * 0.15
             );
         }
     }
@@ -771,82 +818,105 @@ _renderGameScreen() {
 
     else if (this.gameMode === "degrees") {
 
-        let degreeInfo = this._getDegreeName(int(this.currentDegree));
-        let directionText = "";
+        let deg = this._getDegreeName(int(this.currentDegree));
+        let dir = this.currentDegree === 0 ? "FIND" :
+                  this.currentDegree > 0 ? "UP " + deg :
+                                           "DOWN " + deg;
 
-        if (this.currentDegree === 0) directionText = "FIND";
-        else if (this.currentDegree > 0) directionText = "UP " + degreeInfo;
-        else directionText = "DOWN " + degreeInfo;
-
-        textSize(70);
+        // CONSIGNE
         textStyle(BOLD);
-        text(directionText, width / 2, uiY);
+        text(dir, width / 2, consigneCenterY);
 
-        textSize(28);
+        // DESCRIPTION
+        textSize(descH);
         textStyle(NORMAL);
         text(
-            (this.currentDegree === 0 ? 'Trouve le meme ' :
-             (this.currentDegree > 0 ? 'Monte à ' : 'Descends à ')) +
-            degreeInfo,
+            (this.currentDegree === 0 ? "Trouve le même " :
+             this.currentDegree > 0 ? "Trouve le prochain " : "Trouve le precedent ") + deg,
             width / 2,
-            uiY + (topHalfBottom - topHalfTop) * 0.20
+            descY + descH * 0.15
         );
     }
 
 
-    else if (this.gameMode === "notes") {
+else if (this.gameMode === "notes") {
+    const NOTE_FR = {
+    "C": "do",
+    "C#": "do#",
+    "Db": "réb",
+    "D": "ré",
+    "D#": "ré#",
+    "Eb": "mib",
+    "E": "mi",
+    "F": "fa",
+    "F#": "fa#",
+    "Gb": "solb",
+    "G": "sol",
+    "G#": "sol#",
+    "Ab": "lab",
+    "A": "la",
+    "A#": "la#",
+    "Bb": "sib",
+    "B": "si"
+};
 
-        let startNoteName = this.startingNote.match(/[A-G]#?b?/)[0];
-        let startOctave = parseInt(this.startingNote.match(/\d+/)[0]);
-        let targetOctave = parseInt(this.targetNote.match(/\d+/)[0]);
-        let directionText = "";
 
-        if (this.currentTargetNoteName === startNoteName && targetOctave === startOctave)
-            directionText = "FIND " + this.currentTargetNoteName;
-        else if (targetOctave > startOctave)
-            directionText = "UP " + this.currentTargetNoteName;
-        else if (targetOctave < startOctave)
-            directionText = "DOWN " + this.currentTargetNoteName;
-        else
-            directionText = "UP " + this.currentTargetNoteName;
+    let startName = this.startingNote.match(/[A-G]#?b?/)[0];
+    let startOct = parseInt(this.startingNote.match(/\d+/)[0]);
 
-        textSize(70);
-        textStyle(BOLD);
-        text(directionText, width / 2, uiY);
-    }
+    let targetName = this.currentTargetNoteName;
+    let targetOct = parseInt(this.targetNote.match(/\d+/)[0]);
+    let targetFR = NOTE_FR[targetName];
 
+    // Convertir en valeur MIDI pour comparer correctement
+    const noteToMidi = (name, oct) => {
+        const map = { C:0, "C#":1, Db:1, D:2, "D#":3, Eb:3, E:4, F:5, "F#":6, Gb:6, G:7, "G#":8, Ab:8, A:9, "A#":10, Bb:10, B:11 };
+        return map[name] + 12 * (oct + 1);
+    };
 
-    // ============================================================
-    // 7) MESSAGE DE RÉSULTAT (toujours dans la moitié haute)
-    // ============================================================
+    const startMidi = noteToMidi(startName, startOct);
+    const targetMidi = noteToMidi(targetName, targetOct);
 
-    if (this.showingAnswer) {
+    let dir = "";
+    if (targetMidi === startMidi)
+        dir = "FIND " + targetName;
+    else if (targetMidi > startMidi)
+        dir = "UP " + targetName;
+    else
+        dir = "DOWN " + targetName;
 
-        textAlign(CENTER, TOP);
-        textSize(32);
+    // CONSIGNE
+    textSize(consigneH);
+    textStyle(BOLD);
+    text(dir, width / 2, consigneCenterY);
 
-        const baseY = uiY + (topHalfBottom - topHalfTop) * 0.25;
+    // DESCRIPTION
+    textSize(descH);
+    textStyle(NORMAL);
 
-        if (this.answerWasCorrect) {
-            fill(0,150,0);
-            text('Correct !', width / 2, baseY);
-        } else if (this.timeoutOccurred) {
-            fill(200,0,0);
-            text('Temps écoulé !', width / 2, baseY);
-        } else {
-            fill(200,0,0);
-            text('Raté…', width / 2, baseY);
-        }
+    let desc = "";
+    if (targetMidi === startMidi)
+        desc = "Trouve le même " + targetFR;
+    else if (targetMidi > startMidi)
+        desc = "Trouve le prochain " + targetFR;
+    else
+        desc = "Trouve le précédent " + targetFR;
 
-        fill(0);
-        textSize(20);
-        text(
-            'Appuie sur ESPACE pour continuer',
-            width / 2,
-            baseY + (topHalfBottom - topHalfTop) * 0.18
-        );
-    }
+    text(desc, width / 2, descY + descH * 0.15);
 }
+
+
+    // ============================================================
+    // 6) MESSAGE DE RÉSULTAT → déclenchement du flash
+    // ============================================================
+    if (this.showingAnswer && !this.flashTriggered) {
+
+        this.triggerFlash(this.answerWasCorrect);
+        this.flashTriggered = true;
+    }
+
+}
+
 
 
 _

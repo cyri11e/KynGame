@@ -10,7 +10,7 @@ class Guitar{
         this.neckWidth = 12/14*this.canvasWidth;
         this.neckHeight = this.canvasWidth/6
         this.markerDiameter = this.neckHeight/10
-        this.noteMarkerDiameter = this.neckHeight/6 // Diamètre des pastilles de note
+        this.noteMarkerDiameter = this.neckHeight/5 // Diamètre des pastilles de note
         this.textSize = 0.8*this.noteMarkerDiameter
         this.markerPositions = [3, 5, 7, 9, 12];
         this.openStringNotes = ['E', 'A', 'D', 'G', 'B', 'E'];
@@ -92,7 +92,7 @@ class Guitar{
     drawNeckBackground() {
 // Ombre portée du manche
 push();
-fill(0, 0, 0, 60); // noir transparent
+fill(60); // noir transparent
 noStroke();
 
 // même forme que le manche, mais décalée
@@ -974,7 +974,7 @@ drawHead() {
     noStroke();
 // Ombre portée de la tête
 push();
-fill(0, 0, 0, 60);
+fill(100);
 noStroke();
 
 beginShape();
