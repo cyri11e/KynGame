@@ -77,6 +77,7 @@ class Guitar{
 
     display() {
         background(220);
+        this.drawHead();
         this.drawNeckBackground();
         this.drawStrings();
         this.drawMarkers();
@@ -89,6 +90,21 @@ class Guitar{
     }
 
     drawNeckBackground() {
+// Ombre portée du manche
+push();
+fill(0, 0, 0, 60); // noir transparent
+noStroke();
+
+// même forme que le manche, mais décalée
+rect(
+    this.neckX + 6,          // décalage horizontal
+    this.neckY - 10 + 6,     // décalage vertical
+    this.neckWidth,
+    this.neckHeight + 20
+);
+pop();
+
+
         fill('#eedbcbff'); // Couleur marron pour le manche
         rect(this.neckX, this.neckY-10, this.neckWidth, this.neckHeight+20);
 
@@ -936,9 +952,72 @@ s
         }
     }
 
+    
+drawHead() {
+    push()
+    const x = this.neckX;
+    const y = this.neckY;
+    const h = this.neckHeight;
+    const w = this.neckWidth;
+    const stringCount = this.stringCount;
+    const stringSpacing = h / (stringCount - 1);
+
+    const headLength = w * 0.2;
+
+    // Limites VISUELLES du manche (comme dans drawNeckBackground)
+    const neckTop = y - 10;
+    const neckBottom = y + h + 10;
+    const fullH = neckBottom - neckTop;
+
+    // --- TÊTE : TRAPÈZE PLUS ÉVASÉ ---
+    fill('#eedbcbff');
+    noStroke();
+// Ombre portée de la tête
+push();
+fill(0, 0, 0, 60);
+noStroke();
+
+beginShape();
+vertex(x + 6, neckTop + 6);
+vertex(x - headLength + 6, neckTop - fullH * 0.3 + 6);
+vertex(x - headLength + 6, neckBottom + fullH * 0.3 + 6);
+vertex(x + 6, neckBottom + 6);
+endShape(CLOSE);
+
+pop();
+
+    beginShape();
+    // Coin haut droit : aligné sur le haut du manche
+    vertex(x, neckTop);
+    // Coin haut gauche : plus haut et plus à gauche → évasé
+    vertex(x - headLength, neckTop - fullH * 0.3);
+    // Coin bas gauche : plus bas et plus à gauche → évasé
+    vertex(x - headLength, neckBottom + fullH * 0.3);
+    // Coin bas droit : aligné sur le bas du manche
+    vertex(x, neckBottom);
+    endShape(CLOSE);
+
+    // --- Cordes évasées, aigu en haut (inchangé) ---
+    stroke(180);
+    for (let i = 0; i < stringCount; i++) {
+        const thickness = this.stringThickness[i] || 2;
+        strokeWeight(thickness);
+
+        const sy = y + i * stringSpacing;
+        const fanOffset = (i - (stringCount - 1) / 2) * stringSpacing * 0.6;
+        const startX = x - headLength * 1.2;
+        const startY = sy + fanOffset;
+
+        line(startX, startY, x, sy);
+    }
+    pop()
+}
+
+
+
     drawOpenNotes() {
         fill(0);
-        textSize(this.textSize);
+        textSize(this.textSize/2);
         textAlign(CENTER, CENTER);
         for (let i = 0; i < this.stringCount; i++) {
             let y = this.neckY + i * (this.neckHeight / (this.stringCount - 1));
@@ -1173,19 +1252,59 @@ s
         return notesOrderSharp[noteIndex] + octave;
     }
 
-    drawMarkers() {
-        fill(200);
-        noStroke();
-        for (let i of this.markerPositions) {
-            let x = this.neckX + i * (this.neckWidth / this.fretCount) - (this.neckWidth / this.fretCount) / 2;
-            if (i === 12) {
-                ellipse(x, this.neckY + 0.9 * this.neckHeight , this.markerDiameter, this.markerDiameter);
-                ellipse(x, this.neckY + 0.7 *  this.neckHeight , this.markerDiameter, this.markerDiameter);
-            } else {
-                ellipse(x, this.neckY + 0.9 * this.neckHeight , this.markerDiameter, this.markerDiameter);
-            }
+drawMarkers() {
+    fill(200);
+    noStroke();
+
+    const fretW = this.neckWidth / this.fretCount;
+    const textColor = 'rgb(255, 255, 255)'; // couleur du manche
+
+    textAlign(CENTER, CENTER);
+    textSize(this.markerDiameter * 0.7);
+
+    for (let i of this.markerPositions) {
+
+        let x = this.neckX + i * fretW - fretW / 2;
+
+        // --- FRETTES NORMALES ---
+        if (i !== 12) {
+            // pastille
+            fill(200);
+            ellipse(x, this.neckY + 0.9 * this.neckHeight, this.markerDiameter, this.markerDiameter);
+
+            // numéro
+            fill(textColor);
+            noStroke();
+            text(i, x, this.neckY + 0.9 * this.neckHeight);
+        }
+
+        // --- FRETTE 12 : DEUX PASTILLES AVEC "12" DANS CHACUNE ---
+        else {
+            // pastille haute
+            fill(200);
+            ellipse(x, this.neckY + 0.7 * this.neckHeight, this.markerDiameter, this.markerDiameter);
+            // numéro
+            fill(textColor);
+            text("12", x, this.neckY + 0.7 * this.neckHeight);
+
+            // pastille basse
+            fill(200);
+            ellipse(x, this.neckY + 0.9 * this.neckHeight, this.markerDiameter, this.markerDiameter);
+            // numéro
+            fill(textColor);
+            text("12", x, this.neckY + 0.9 * this.neckHeight);
         }
     }
+
+    // --- FRETTE 0 ---
+    let x0 = this.neckX - fretW / 2;
+    fill(200);
+    ellipse(x0, this.neckY + 0.9 * this.neckHeight, this.markerDiameter, this.markerDiameter);
+
+    fill(textColor);
+    text("0", x0, this.neckY + 0.9 * this.neckHeight);
+}
+
 
     highlightSurroundedNotes() {
         // Placeholder pour la méthode
